@@ -1,23 +1,25 @@
 import React, { useState, useEffect, useRef } from 'react';
-import {
-  View,
-  Text,
-  SafeAreaView,
-  TouchableOpacity,
-  Modal,
-  Image,
-  Dimensions,
-} from 'react-native';
+import MapView, { Marker } from 'react-native-maps';
+import { View } from 'react-native';
 import { Camera } from 'expo-camera';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import * as Permissions from 'expo-permissions';
 import * as MediaLibrary from 'expo-media-library';
+import * as Location from 'expo-location';
+
+import api from '../../services/api';
 
 import {
   Container,
-  ContainerCamera,
+  ContentCamera,
   TouchButtonRevertCamera,
   TouchButtonTakePicture,
+  Image,
+  Content,
+  IconWeather,
+  TextTemperature,
+  TextAddress,
+  TextInput,
 } from './styles';
 
 const register = () => {
@@ -26,6 +28,25 @@ const register = () => {
   const [type, setType] = useState(Camera.Constants.Type.back);
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [open, setOpen] = useState(false);
+  const [location, setLocation] = useState({
+    coords: {
+      latitude: 0,
+      longitude: 0,
+    },
+  });
+  const [address, setAddress] = useState({
+    street: null,
+    number: null,
+    name: null,
+    city: null,
+    region: null,
+  });
+  const [weather, setWeather] = useState([
+    {
+      icon: null,
+    },
+  ]);
+  const [informationsWeather, setInformationsWeather] = useState([]);
 
   useEffect(() => {
     (async () => {
@@ -37,7 +58,52 @@ const register = () => {
       const { status } = await Permissions.askAsync(Permissions.CAMERA_ROLL);
       setHasPermission(status === 'granted');
     })();
+
+    (async () => {
+      const { status } = await Location.requestPermissionsAsync();
+      setHasPermission(status === 'granted');
+    })();
+
+    (async () => {
+      const { status } = await Location.enableNetworkProviderAsync();
+      setHasPermission(status === 'granted');
+    })();
+
+    (async () => {
+      const { status } = await Permissions.askAsync(Permissions.LOCATION);
+      setHasPermission(status === 'granted');
+    })();
+
+    (async () => {
+      console.log('aqui');
+      if (hasPermission === true) {
+        const responseLocation = await Location.getCurrentPositionAsync();
+        setLocation(responseLocation);
+      }
+    })();
   }, []);
+
+  useEffect(() => {
+    (async () => {
+      const responseAddress = await Location.reverseGeocodeAsync(
+        location.coords
+      );
+      setAddress(responseAddress[0]);
+      console.log(responseAddress[0]);
+    })();
+
+    (async () => {
+      const responseWeather = await api.get('weather', {
+        params: {
+          lat: location.coords.latitude,
+          lon: location.coords.longitude,
+          appid: process.env.REACT_APP_SECRET_API_GOOGLE,
+        },
+      });
+      setWeather(responseWeather.data.weather);
+      setInformationsWeather(responseWeather.data.main);
+    })();
+  }, [location]);
 
   if (hasPermission === null) {
     return <View />;
@@ -66,21 +132,15 @@ const register = () => {
 
   return (
     <Container>
-      <ContainerCamera>
+      {!open ? (
         <Camera
-          style={{ flex: 1 }}
+          style={{ height: '50%' }}
           type={type}
           radio="16:9"
           useCamera2Ap
           ref={camRef}
         >
-          <View
-            style={{
-              flex: 1,
-              backgroundColor: 'transparent',
-              flexDirection: 'row',
-            }}
-          >
+          <ContentCamera>
             <TouchButtonRevertCamera
               onPress={() => {
                 setType(
@@ -96,9 +156,55 @@ const register = () => {
             <TouchButtonTakePicture onPress={takePicture}>
               <FontAwesome name="camera" size={30} color="#FFF" />
             </TouchButtonTakePicture>
-          </View>
+          </ContentCamera>
         </Camera>
-      </ContainerCamera>
+      ) : (
+        <Image
+          style={{ width: '100%', backgroundColor: '#555' }}
+          source={{ uri: capturedPhoto }}
+        />
+      )}
+      <Content>
+        <MapView
+          style={{ width: '100%', height: '30%' }}
+          initialRegion={{
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            latitudeDelta: 0,
+            longitudeDelta: 0,
+          }}
+          zoomEnabled
+          minZoomLevel={13}
+        >
+          <Marker
+            coordinate={location.coords}
+            title="teste"
+            // description={marker.description}
+          />
+        </MapView>
+        {/* <TextAddress>{`Endereço: ${
+          address.street !== null ? `${address.street} - ` : ''
+        }${address.name !== null ? `${address.name}, ` : ''}${
+          address.city !== null ? `${address.city} - ` : ''
+        }${address.region !== null ? `${address.region}` : ''}`}</TextAddress> */}
+        <IconWeather
+          source={{
+            uri: `http://openweathermap.org/img/wn/${weather[0].icon}.png`,
+          }}
+        />
+
+        <TextTemperature style={{ fontSize: 30, fontWeight: 'bold' }}>
+          {`${(informationsWeather.feels_like - 273.15).toFixed(2)}ºC`}
+        </TextTemperature>
+
+        <TextInput
+          // style={{ color:  }}
+          // value={this.state.value}
+          // onChangeText={(text) => this.setState({ value: text })}
+          multiline
+          underlineColorAndroid="transparent"
+        />
+      </Content>
     </Container>
   );
 };
